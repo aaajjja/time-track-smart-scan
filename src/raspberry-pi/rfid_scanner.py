@@ -10,19 +10,6 @@ Hardware Required:
 - PN532 NFC RFID Module (13.56MHz)
 - Jumper wires
 - Optional: LED indicators and/or buzzer for feedback
-
-Wiring Diagram for PN532 with SPI:
-- PN532 VCC -> Raspberry Pi 3.3V
-- PN532 GND -> Raspberry Pi GND
-- PN532 SCK -> Raspberry Pi SCLK (GPIO11)
-- PN532 MISO -> Raspberry Pi MISO (GPIO9)
-- PN532 MOSI -> Raspberry Pi MOSI (GPIO10)
-- PN532 SS -> Raspberry Pi CE0 (GPIO8)
-
-Optional LEDs:
-- Success LED -> GPIO17 (with appropriate resistor)
-- Error LED -> GPIO27 (with appropriate resistor)
-- Buzzer -> GPIO22
 """
 
 import time
@@ -36,6 +23,8 @@ from firebase_admin import firestore
 import datetime
 import requests
 import json
+import threading
+import queue
 
 # Optional: Set up LED pins for feedback
 SUCCESS_LED = 17
@@ -46,6 +35,13 @@ BUZZER = 22
 cred = credentials.Certificate("/path/to/serviceAccountKey.json")
 firebase_admin.initialize_app(cred)
 db = firestore.client()
+
+# In-memory cache for users and attendance records
+user_cache = {}
+record_cache = {}
+
+# Queue for background processing
+process_queue = queue.Queue()
 
 def setup():
     """Set up the hardware."""
@@ -91,6 +87,10 @@ def provide_feedback(success):
 
 def get_user_by_card_uid(card_uid):
     """Get user information from Firebase based on card UID."""
+    # Check cache first
+    if card_uid in user_cache:
+        return user_cache[card_uid]
+    
     users_ref = db.collection('users')
     query = users_ref.where('cardUID', '==', card_uid).limit(1)
     results = query.get()
@@ -98,7 +98,29 @@ def get_user_by_card_uid(card_uid):
     for doc in results:
         user_data = doc.to_dict()
         user_data['id'] = doc.id
+        # Update cache
+        user_cache[card_uid] = user_data
         return user_data
+    
+    return None
+
+def get_today_record(user_id):
+    """Get today's attendance record for a user."""
+    today = datetime.datetime.now().strftime('%Y-%m-%d')
+    cache_key = f"{user_id}_{today}"
+    
+    # Check cache first
+    if cache_key in record_cache:
+        return record_cache[cache_key]
+    
+    record_ref = db.collection('attendance').document(cache_key)
+    record = record_ref.get()
+    
+    if record.exists:
+        record_data = record.to_dict()
+        # Update cache
+        record_cache[cache_key] = record_data
+        return record_data
     
     return None
 
@@ -106,11 +128,12 @@ def determine_action(user_id, user_name):
     """Determine the appropriate action based on today's attendance record."""
     today = datetime.datetime.now().strftime('%Y-%m-%d')
     now = datetime.datetime.now().strftime('%I:%M %p')  # 12-hour format with AM/PM
+    cache_key = f"{user_id}_{today}"
     
-    record_ref = db.collection('attendance').document(f"{user_id}_{today}")
-    record = record_ref.get()
+    # Get existing record or create new one
+    record_data = get_today_record(user_id)
     
-    if not record.exists:
+    if not record_data:
         # No record for today, create new with Time In AM
         record_data = {
             'userId': user_id,
@@ -118,7 +141,10 @@ def determine_action(user_id, user_name):
             'date': today,
             'timeInAM': now
         }
-        record_ref.set(record_data)
+        # Write to Firebase in the background
+        process_queue.put(('write', cache_key, record_data))
+        # Update cache immediately
+        record_cache[cache_key] = record_data
         return {
             'success': True,
             'action': 'Time In AM',
@@ -126,12 +152,13 @@ def determine_action(user_id, user_name):
             'message': f"Welcome {user_name}! Time In AM recorded at {now}"
         }
     
-    # Record exists, update based on what's already there
-    record_data = record.to_dict()
-    
+    # Determine next action based on what's already there
     if not record_data.get('timeOutAM'):
         # Has Time In AM but no Time Out AM
-        record_ref.update({'timeOutAM': now})
+        record_data['timeOutAM'] = now
+        process_queue.put(('update', cache_key, {'timeOutAM': now}))
+        # Update cache
+        record_cache[cache_key] = record_data
         return {
             'success': True,
             'action': 'Time Out AM',
@@ -141,7 +168,10 @@ def determine_action(user_id, user_name):
     
     if not record_data.get('timeInPM'):
         # Has AM records but no Time In PM
-        record_ref.update({'timeInPM': now})
+        record_data['timeInPM'] = now
+        process_queue.put(('update', cache_key, {'timeInPM': now}))
+        # Update cache
+        record_cache[cache_key] = record_data
         return {
             'success': True,
             'action': 'Time In PM',
@@ -151,7 +181,10 @@ def determine_action(user_id, user_name):
     
     if not record_data.get('timeOutPM'):
         # Has Time In PM but no Time Out PM
-        record_ref.update({'timeOutPM': now})
+        record_data['timeOutPM'] = now
+        process_queue.put(('update', cache_key, {'timeOutPM': now}))
+        # Update cache
+        record_cache[cache_key] = record_data
         return {
             'success': True,
             'action': 'Time Out PM',
@@ -181,9 +214,6 @@ def record_attendance(card_uid):
         # Determine and execute appropriate action
         result = determine_action(user['id'], user['name'])
         
-        # Send to web interface (if needed)
-        # This could be done via a local web server or websockets
-        # For this example, we'll just print to the console
         print(f"Scan result: {result['message']}")
         
         return result
@@ -195,9 +225,35 @@ def record_attendance(card_uid):
             'message': f"System error: {e}"
         }
 
+def background_worker():
+    """Background thread to process Firebase operations."""
+    while True:
+        try:
+            # Get operation from queue
+            operation, key, data = process_queue.get()
+            
+            if operation == 'write':
+                # Write new document
+                db.collection('attendance').document(key).set(data)
+            elif operation == 'update':
+                # Update existing document
+                db.collection('attendance').document(key).update(data)
+            
+            # Mark task as done
+            process_queue.task_done()
+        except Exception as e:
+            print(f"Background worker error: {e}")
+        
+        # Small sleep to avoid CPU overuse
+        time.sleep(0.01)
+
 def main():
     """Main function to run the RFID scanner."""
     pn532 = setup()
+    
+    # Start background worker
+    worker_thread = threading.Thread(target=background_worker, daemon=True)
+    worker_thread.start()
     
     print("Waiting for RFID/NFC card...")
     last_uid = None
@@ -209,10 +265,11 @@ def main():
     try:
         while True:
             # Check if a card is available to read
-            uid = pn532.read_passive_target(timeout=0.5)
+            uid = pn532.read_passive_target(timeout=0.1)  # Reduced timeout for faster response
             
             # If no card is found, keep looking
             if uid is None:
+                time.sleep(0.05)  # Short sleep to reduce CPU usage
                 continue
             
             # Convert UID bytes to hex string
@@ -221,7 +278,7 @@ def main():
             
             # Prevent duplicate scans of the same card
             if card_uid == last_uid and current_time - last_scan_time < SCAN_COOLDOWN:
-                time.sleep(0.1)
+                time.sleep(0.05)
                 continue
             
             print(f"Card detected with UID: {card_uid}")
@@ -236,10 +293,9 @@ def main():
             last_uid = card_uid
             last_scan_time = current_time
             
-            # Pause briefly
-            time.sleep(0.5)
-            
     except KeyboardInterrupt:
+        # Wait for background tasks to complete
+        process_queue.join()
         GPIO.cleanup()
         print("Program terminated.")
 

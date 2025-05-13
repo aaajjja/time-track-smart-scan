@@ -1,3 +1,4 @@
+
 import { collection, doc, getDoc, setDoc, query, where, getDocs, Timestamp } from "firebase/firestore";
 import { db } from "./firebase";
 import { User, TimeRecord, AttendanceAction, ScanResult } from "../types";
@@ -10,20 +11,12 @@ const simulatedUsers: Record<string, User> = {
   "11223344": { id: "user3", name: "Mike Johnson", cardUID: "11223344", department: "Finance" },
 };
 
+// Local cache for today's records to avoid repeated Firestore calls
+const recordsCache: Record<string, TimeRecord> = {};
+
 export async function getUserByCardUID(cardUID: string): Promise<User | null> {
-  // In a real system, we'd query Firebase
-  // const userRef = collection(db, "users");
-  // const q = query(userRef, where("cardUID", "==", cardUID));
-  // const querySnapshot = await getDocs(q);
-  
-  // if (querySnapshot.empty) {
-  //   return null;
-  // }
-  
-  // const userData = querySnapshot.docs[0].data() as User;
-  // return { ...userData, id: querySnapshot.docs[0].id };
-  
-  // For this simulation:
+  // For simulation, we're using the local object directly
+  // This is already fast, no need to optimize
   return simulatedUsers[cardUID] || null;
 }
 
@@ -76,13 +69,22 @@ export async function registerNewUser(userData: {
 
 export async function getTodayRecord(userId: string): Promise<TimeRecord | null> {
   const today = format(new Date(), "yyyy-MM-dd");
+  const cacheKey = `${userId}_${today}`;
+  
+  // Check cache first
+  if (recordsCache[cacheKey]) {
+    return recordsCache[cacheKey];
+  }
   
   try {
-    const recordRef = doc(db, "attendance", `${userId}_${today}`);
+    const recordRef = doc(db, "attendance", cacheKey);
     const recordSnap = await getDoc(recordRef);
     
     if (recordSnap.exists()) {
-      return recordSnap.data() as TimeRecord;
+      // Update cache
+      const record = recordSnap.data() as TimeRecord;
+      recordsCache[cacheKey] = record;
+      return record;
     }
     
     return null;
@@ -96,6 +98,7 @@ export async function determineAction(userId: string, userName: string): Promise
   const today = format(new Date(), "yyyy-MM-dd");
   const now = new Date();
   const formattedTime = format(now, "hh:mm a");
+  const cacheKey = `${userId}_${today}`;
   
   try {
     // Get today's record if it exists
@@ -110,7 +113,11 @@ export async function determineAction(userId: string, userName: string): Promise
         timeInAM: formattedTime
       };
       
-      await setDoc(doc(db, "attendance", `${userId}_${today}`), record);
+      // Update Firebase
+      await setDoc(doc(db, "attendance", cacheKey), record);
+      
+      // Update cache
+      recordsCache[cacheKey] = record;
       
       return {
         success: true,
@@ -122,53 +129,43 @@ export async function determineAction(userId: string, userName: string): Promise
     }
     
     // Determine next action based on existing record
+    let action: AttendanceAction = "Complete";
+    let message = `${userName}, you have completed your DTR for today.`;
+    let success = false;
+    
     if (!record.timeOutAM) {
       // Has Time In AM but no Time Out AM
       record.timeOutAM = formattedTime;
-      await setDoc(doc(db, "attendance", `${userId}_${today}`), record);
-      
-      return {
-        success: true,
-        action: "Time Out AM",
-        time: formattedTime,
-        message: `Goodbye ${userName}! Time Out AM recorded at ${formattedTime}`,
-        userName
-      };
-    }
-    
-    if (!record.timeInPM) {
+      action = "Time Out AM";
+      message = `Goodbye ${userName}! Time Out AM recorded at ${formattedTime}`;
+      success = true;
+    } else if (!record.timeInPM) {
       // Has AM records but no Time In PM
       record.timeInPM = formattedTime;
-      await setDoc(doc(db, "attendance", `${userId}_${today}`), record);
-      
-      return {
-        success: true,
-        action: "Time In PM",
-        time: formattedTime,
-        message: `Welcome back ${userName}! Time In PM recorded at ${formattedTime}`,
-        userName
-      };
-    }
-    
-    if (!record.timeOutPM) {
+      action = "Time In PM";
+      message = `Welcome back ${userName}! Time In PM recorded at ${formattedTime}`;
+      success = true;
+    } else if (!record.timeOutPM) {
       // Has Time In PM but no Time Out PM
       record.timeOutPM = formattedTime;
-      await setDoc(doc(db, "attendance", `${userId}_${today}`), record);
-      
-      return {
-        success: true,
-        action: "Time Out PM",
-        time: formattedTime,
-        message: `Goodbye ${userName}! Time Out PM recorded at ${formattedTime}. See you tomorrow!`,
-        userName
-      };
+      action = "Time Out PM";
+      message = `Goodbye ${userName}! Time Out PM recorded at ${formattedTime}. See you tomorrow!`;
+      success = true;
     }
     
-    // All slots are filled for today
+    if (success) {
+      // Update Firebase
+      await setDoc(doc(db, "attendance", cacheKey), record);
+      
+      // Update cache
+      recordsCache[cacheKey] = record;
+    }
+    
     return {
-      success: false,
-      action: "Complete",
-      message: `${userName}, you have completed your DTR for today.`,
+      success,
+      action,
+      time: success ? formattedTime : undefined,
+      message,
       userName
     };
     
@@ -183,7 +180,7 @@ export async function determineAction(userId: string, userName: string): Promise
 
 export async function recordAttendance(cardUID: string): Promise<ScanResult> {
   try {
-    // Get user by card UID
+    // Get user by card UID - this is already optimized using the local object
     const user = await getUserByCardUID(cardUID);
     
     if (!user) {

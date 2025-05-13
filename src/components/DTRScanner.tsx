@@ -1,5 +1,4 @@
-
-import React, { useState } from 'react';
+import React, { useState, useCallback } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
 import Clock from './Clock';
@@ -15,17 +14,14 @@ const DTRScanner: React.FC = () => {
   const [isProcessing, setIsProcessing] = useState<boolean>(false);
   const { toast } = useToast();
 
-  const handleScan = async (cardUID: string) => {
+  const handleScan = useCallback(async (cardUID: string) => {
     if (isProcessing) return;
     
     setIsProcessing(true);
     setScanResult(null);
     
     try {
-      // Simulate processing delay
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      
-      // Process the attendance record
+      // Process the attendance record immediately without artificial delay
       const result = await recordAttendance(cardUID);
       setScanResult(result);
       
@@ -51,7 +47,7 @@ const DTRScanner: React.FC = () => {
     } finally {
       setIsProcessing(false);
     }
-  };
+  }, [isProcessing, toast]);
 
   return (
     <div className="max-w-3xl mx-auto p-4 space-y-6">
