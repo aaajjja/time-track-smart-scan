@@ -1,4 +1,3 @@
-
 import React, { useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -10,6 +9,7 @@ import { ArrowLeft, Search, FileDown, UserPlus, Loader2 } from "lucide-react";
 import { Link } from "react-router-dom";
 import { toast } from "@/components/ui/use-toast";
 import { registerNewUser } from "@/services/attendanceService";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
 // Simulated attendance records
 const attendanceRecords = [
@@ -66,7 +66,6 @@ const AdminDashboard: React.FC = () => {
     name: '',
     cardUID: '',
     department: '',
-    position: '',
   });
 
   const handleSearch = (e: React.FormEvent) => {
@@ -112,7 +111,6 @@ const AdminDashboard: React.FC = () => {
             name: '',
             cardUID: '',
             department: '',
-            position: '',
           });
         } else {
           toast({
@@ -133,6 +131,10 @@ const AdminDashboard: React.FC = () => {
       .finally(() => {
         setIsLoading(false);
       });
+  };
+
+  const handleDepartmentChange = (value: string) => {
+    setNewUser({...newUser, department: value});
   };
 
   const filteredRecords = attendanceRecords.filter(record => 
@@ -258,19 +260,24 @@ const AdminDashboard: React.FC = () => {
                   </div>
                   <div className="space-y-2">
                     <Label htmlFor="department">Department</Label>
-                    <Input 
-                      id="department" 
-                      value={newUser.department}
-                      onChange={(e) => setNewUser({...newUser, department: e.target.value})}
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="position">Position</Label>
-                    <Input 
-                      id="position" 
-                      value={newUser.position}
-                      onChange={(e) => setNewUser({...newUser, position: e.target.value})}
-                    />
+                    <Select 
+                      value={newUser.department} 
+                      onValueChange={handleDepartmentChange}
+                    >
+                      <SelectTrigger id="department">
+                        <SelectValue placeholder="Select department" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="CCIS">CCIS</SelectItem>
+                        <SelectItem value="COE">COE</SelectItem>
+                        <SelectItem value="CAS">CAS</SelectItem>
+                        <SelectItem value="CAFSD">CAFSD</SelectItem>
+                        <SelectItem value="CHS">CHS</SelectItem>
+                        <SelectItem value="CBEA">CBEA</SelectItem>
+                        <SelectItem value="COM">COM</SelectItem>
+                        <SelectItem value="CVM">CVM</SelectItem>
+                      </SelectContent>
+                    </Select>
                   </div>
                 </div>
                 <Button type="submit" disabled={isLoading} className="mt-4">

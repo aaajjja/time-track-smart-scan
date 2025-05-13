@@ -1,4 +1,3 @@
-
 import { collection, doc, getDoc, setDoc, query, where, getDocs, Timestamp } from "firebase/firestore";
 import { db } from "./firebase";
 import { User, TimeRecord, AttendanceAction, ScanResult } from "../types";
@@ -6,9 +5,9 @@ import { format } from "date-fns";
 
 // Simulate some users with RFID cards
 const simulatedUsers: Record<string, User> = {
-  "12345678": { id: "user1", name: "John Doe", cardUID: "12345678", department: "IT", position: "Developer" },
-  "87654321": { id: "user2", name: "Jane Smith", cardUID: "87654321", department: "HR", position: "Manager" },
-  "11223344": { id: "user3", name: "Mike Johnson", cardUID: "11223344", department: "Finance", position: "Accountant" },
+  "12345678": { id: "user1", name: "John Doe", cardUID: "12345678", department: "IT" },
+  "87654321": { id: "user2", name: "Jane Smith", cardUID: "87654321", department: "HR" },
+  "11223344": { id: "user3", name: "Mike Johnson", cardUID: "11223344", department: "Finance" },
 };
 
 export async function getUserByCardUID(cardUID: string): Promise<User | null> {
@@ -32,7 +31,6 @@ export async function registerNewUser(userData: {
   name: string; 
   cardUID: string; 
   department?: string; 
-  position?: string;
 }): Promise<{ success: boolean; message: string }> {
   try {
     // Check if the cardUID already exists
@@ -52,7 +50,6 @@ export async function registerNewUser(userData: {
       name: userData.name,
       cardUID: userData.cardUID,
       department: userData.department,
-      position: userData.position,
     };
     
     // In a real system, we'd use Firebase:

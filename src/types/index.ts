@@ -1,10 +1,8 @@
-
 export interface User {
   id: string;
   name: string;
   cardUID: string;
   department?: string;
-  position?: string;
   email?: string;
 }
 
