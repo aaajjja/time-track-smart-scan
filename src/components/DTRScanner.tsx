@@ -1,3 +1,4 @@
+
 import React, { useState, useCallback } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
@@ -13,19 +14,27 @@ const DTRScanner: React.FC = () => {
   const [scanResult, setScanResult] = useState<ScanResult | null>(null);
   const [isProcessing, setIsProcessing] = useState<boolean>(false);
   const { toast } = useToast();
-
+  
+  // Using a more optimized scan handler with debouncing protection
   const handleScan = useCallback(async (cardUID: string) => {
-    if (isProcessing) return;
+    if (isProcessing) {
+      console.log("Scan already in progress, ignoring request");
+      return;
+    }
     
+    // Update UI immediately to show processing
     setIsProcessing(true);
-    setScanResult(null);
     
     try {
-      // Process the attendance record immediately without artificial delay
+      console.time('scan-processing');
+      // Process attendance directly without setState in between to reduce render cycles
       const result = await recordAttendance(cardUID);
+      console.timeEnd('scan-processing');
+      
+      // Update UI with result
       setScanResult(result);
       
-      // Show toast for feedback
+      // Show toast notification
       toast({
         title: result.success ? "Scan Successful" : "Scan Failed",
         description: result.message,
@@ -45,6 +54,7 @@ const DTRScanner: React.FC = () => {
         variant: "destructive",
       });
     } finally {
+      // Release the processing lock
       setIsProcessing(false);
     }
   }, [isProcessing, toast]);

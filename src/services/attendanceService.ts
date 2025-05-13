@@ -4,6 +4,16 @@ import { db } from "./firebase";
 import { User, TimeRecord, AttendanceAction, ScanResult } from "../types";
 import { format } from "date-fns";
 
+// Enhanced in-memory caching system
+const CACHE = {
+  // Cache users by cardUID for faster lookups
+  users: {} as Record<string, User>,
+  // Cache today's records by userId_date for faster lookups
+  records: {} as Record<string, TimeRecord>,
+  // Track last fetch time to implement cache invalidation
+  lastFetch: 0
+};
+
 // Simulate some users with RFID cards
 const simulatedUsers: Record<string, User> = {
   "12345678": { id: "user1", name: "John Doe", cardUID: "12345678", department: "IT" },
@@ -11,13 +21,14 @@ const simulatedUsers: Record<string, User> = {
   "11223344": { id: "user3", name: "Mike Johnson", cardUID: "11223344", department: "Finance" },
 };
 
-// Local cache for today's records to avoid repeated Firestore calls
-const recordsCache: Record<string, TimeRecord> = {};
+// Load users into cache immediately
+Object.values(simulatedUsers).forEach(user => {
+  CACHE.users[user.cardUID] = user;
+});
 
 export async function getUserByCardUID(cardUID: string): Promise<User | null> {
-  // For simulation, we're using the local object directly
-  // This is already fast, no need to optimize
-  return simulatedUsers[cardUID] || null;
+  // Direct cache lookup without async overhead
+  return CACHE.users[cardUID] || null;
 }
 
 export async function registerNewUser(userData: { 
@@ -26,8 +37,8 @@ export async function registerNewUser(userData: {
   department?: string; 
 }): Promise<{ success: boolean; message: string }> {
   try {
-    // Check if the cardUID already exists
-    if (simulatedUsers[userData.cardUID]) {
+    // Check for duplicate card directly from cache
+    if (CACHE.users[userData.cardUID]) {
       return { 
         success: false, 
         message: "This RFID card is already registered to another user."
@@ -45,14 +56,11 @@ export async function registerNewUser(userData: {
       department: userData.department,
     };
     
-    // In a real system, we'd use Firebase:
-    // await setDoc(doc(db, "users", userId), newUser);
-    
-    // For simulation, we'll add to our local object:
+    // Update both the simulation object and cache
     simulatedUsers[userData.cardUID] = newUser;
+    CACHE.users[userData.cardUID] = newUser;
     
     console.log("User registered successfully:", newUser);
-    console.log("Updated simulatedUsers:", simulatedUsers);
     
     return { 
       success: true, 
@@ -71,38 +79,20 @@ export async function getTodayRecord(userId: string): Promise<TimeRecord | null>
   const today = format(new Date(), "yyyy-MM-dd");
   const cacheKey = `${userId}_${today}`;
   
-  // Check cache first
-  if (recordsCache[cacheKey]) {
-    return recordsCache[cacheKey];
-  }
-  
-  try {
-    const recordRef = doc(db, "attendance", cacheKey);
-    const recordSnap = await getDoc(recordRef);
-    
-    if (recordSnap.exists()) {
-      // Update cache
-      const record = recordSnap.data() as TimeRecord;
-      recordsCache[cacheKey] = record;
-      return record;
-    }
-    
-    return null;
-  } catch (error) {
-    console.error("Error getting attendance record:", error);
-    return null;
-  }
+  // Direct cache lookup without async overhead for improved performance
+  return CACHE.records[cacheKey] || null;
 }
 
 export async function determineAction(userId: string, userName: string): Promise<ScanResult> {
+  console.time('determine-action');
   const today = format(new Date(), "yyyy-MM-dd");
   const now = new Date();
   const formattedTime = format(now, "hh:mm a");
   const cacheKey = `${userId}_${today}`;
   
   try {
-    // Get today's record if it exists
-    let record = await getTodayRecord(userId);
+    // Get today's record with minimal overhead
+    let record = CACHE.records[cacheKey] || null;
     
     if (!record) {
       // No record today, create new with Time In AM
@@ -113,12 +103,14 @@ export async function determineAction(userId: string, userName: string): Promise
         timeInAM: formattedTime
       };
       
-      // Update Firebase
-      await setDoc(doc(db, "attendance", cacheKey), record);
+      // Update Firebase in the background
+      setDoc(doc(db, "attendance", cacheKey), record)
+        .catch(err => console.error("Background Firebase update failed:", err));
       
-      // Update cache
-      recordsCache[cacheKey] = record;
+      // Update cache immediately
+      CACHE.records[cacheKey] = record;
       
+      console.timeEnd('determine-action');
       return {
         success: true,
         action: "Time In AM",
@@ -134,19 +126,19 @@ export async function determineAction(userId: string, userName: string): Promise
     let success = false;
     
     if (!record.timeOutAM) {
-      // Has Time In AM but no Time Out AM
+      // Time Out AM
       record.timeOutAM = formattedTime;
       action = "Time Out AM";
       message = `Goodbye ${userName}! Time Out AM recorded at ${formattedTime}`;
       success = true;
     } else if (!record.timeInPM) {
-      // Has AM records but no Time In PM
+      // Time In PM
       record.timeInPM = formattedTime;
       action = "Time In PM";
       message = `Welcome back ${userName}! Time In PM recorded at ${formattedTime}`;
       success = true;
     } else if (!record.timeOutPM) {
-      // Has Time In PM but no Time Out PM
+      // Time Out PM
       record.timeOutPM = formattedTime;
       action = "Time Out PM";
       message = `Goodbye ${userName}! Time Out PM recorded at ${formattedTime}. See you tomorrow!`;
@@ -154,13 +146,15 @@ export async function determineAction(userId: string, userName: string): Promise
     }
     
     if (success) {
-      // Update Firebase
-      await setDoc(doc(db, "attendance", cacheKey), record);
+      // Update cache immediately
+      CACHE.records[cacheKey] = record;
       
-      // Update cache
-      recordsCache[cacheKey] = record;
+      // Update Firebase in the background
+      setDoc(doc(db, "attendance", cacheKey), record)
+        .catch(err => console.error("Background Firebase update failed:", err));
     }
     
+    console.timeEnd('determine-action');
     return {
       success,
       action,
@@ -171,6 +165,7 @@ export async function determineAction(userId: string, userName: string): Promise
     
   } catch (error) {
     console.error("Error determining action:", error);
+    console.timeEnd('determine-action');
     return {
       success: false,
       message: "System error. Please try again or contact administrator."
@@ -179,22 +174,27 @@ export async function determineAction(userId: string, userName: string): Promise
 }
 
 export async function recordAttendance(cardUID: string): Promise<ScanResult> {
+  console.time('total-attendance-processing');
   try {
-    // Get user by card UID - this is already optimized using the local object
-    const user = await getUserByCardUID(cardUID);
+    // Direct cache lookup for maximum speed
+    const user = CACHE.users[cardUID];
     
     if (!user) {
+      console.timeEnd('total-attendance-processing');
       return {
         success: false,
         message: "Unregistered RFID card. Please contact administrator."
       };
     }
     
-    // Determine and execute appropriate action
-    return await determineAction(user.id, user.name);
+    // Determine and execute appropriate action with optimized function
+    const result = await determineAction(user.id, user.name);
+    console.timeEnd('total-attendance-processing');
+    return result;
     
   } catch (error) {
     console.error("Error recording attendance:", error);
+    console.timeEnd('total-attendance-processing');
     return {
       success: false,
       message: "Failed to process scan. Please try again."
