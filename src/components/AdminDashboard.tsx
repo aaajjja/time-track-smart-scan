@@ -8,6 +8,8 @@ import { Label } from "@/components/ui/label";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { ArrowLeft, Search, FileDown, UserPlus, Loader2 } from "lucide-react";
 import { Link } from "react-router-dom";
+import { toast } from "@/components/ui/use-toast";
+import { registerNewUser } from "@/services/attendanceService";
 
 // Simulated attendance records
 const attendanceRecords = [
@@ -83,19 +85,54 @@ const AdminDashboard: React.FC = () => {
 
   const handleAddUser = (e: React.FormEvent) => {
     e.preventDefault();
+    
+    // Validate form
+    if (!newUser.name.trim() || !newUser.cardUID.trim()) {
+      toast({
+        title: "Registration Error",
+        description: "Name and Card UID are required fields.",
+        variant: "destructive",
+      });
+      return;
+    }
+    
     setIsLoading(true);
     
-    // Simulate API call delay
-    setTimeout(() => {
-      setIsLoading(false);
-      alert(`User ${newUser.name} with Card UID ${newUser.cardUID} added successfully!`);
-      setNewUser({
-        name: '',
-        cardUID: '',
-        department: '',
-        position: '',
+    // Call the registration service
+    registerNewUser(newUser)
+      .then((result) => {
+        if (result.success) {
+          toast({
+            title: "User Registered",
+            description: `User ${newUser.name} with Card UID ${newUser.cardUID} added successfully!`,
+          });
+          
+          // Reset the form
+          setNewUser({
+            name: '',
+            cardUID: '',
+            department: '',
+            position: '',
+          });
+        } else {
+          toast({
+            title: "Registration Failed",
+            description: result.message || "Failed to register user. Please try again.",
+            variant: "destructive",
+          });
+        }
+      })
+      .catch((error) => {
+        console.error("Error registering user:", error);
+        toast({
+          title: "Registration Error",
+          description: "An unexpected error occurred. Please try again.",
+          variant: "destructive",
+        });
+      })
+      .finally(() => {
+        setIsLoading(false);
       });
-    }, 1500);
   };
 
   const filteredRecords = attendanceRecords.filter(record => 
