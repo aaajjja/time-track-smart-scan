@@ -1,4 +1,3 @@
-
 import { format } from "date-fns";
 import { collection, getDocs, doc, setDoc, deleteDoc } from "firebase/firestore";
 import { db } from "./firebase";
@@ -7,6 +6,7 @@ import { CACHE } from "./cacheUtils";
 
 export async function getAttendanceRecords(): Promise<TimeRecord[]> {
   try {
+    console.log("Fetching attendance records from Firebase...");
     // Force a fresh fetch from Firebase every time to ensure up-to-date data
     const attendanceRef = collection(db, "attendance");
     const querySnapshot = await getDocs(attendanceRef);
@@ -30,7 +30,7 @@ export async function getAttendanceRecords(): Promise<TimeRecord[]> {
     return records;
   } catch (error) {
     console.error("Error fetching attendance records:", error);
-    return [];
+    throw error; // Throw the error to be handled by the component
   }
 }
 

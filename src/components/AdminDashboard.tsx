@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -39,8 +38,10 @@ const AdminDashboard: React.FC = () => {
 
   const loadAttendanceRecords = async () => {
     try {
+      console.log("Starting to load attendance records");
       setIsProcessing(true);
       const records = await getAttendanceRecords();
+      console.log("Received attendance records:", records);
       setAttendanceRecords(records);
       setIsProcessing(false);
     } catch (error) {
@@ -162,6 +163,15 @@ const AdminDashboard: React.FC = () => {
     setNewUser({...newUser, department: value});
   };
 
+  // Auto-reload records every minute to keep the dashboard updated
+  useEffect(() => {
+    const interval = setInterval(() => {
+      loadAttendanceRecords();
+    }, 60000); // Reload every minute
+    
+    return () => clearInterval(interval);
+  }, []);
+
   return (
     <div className="container mx-auto p-4 max-w-6xl">
       <div className="flex justify-between items-center mb-6">
@@ -174,7 +184,7 @@ const AdminDashboard: React.FC = () => {
         </Link>
       </div>
       
-      <Tabs defaultValue="users" className="space-y-4">
+      <Tabs defaultValue="attendance" className="space-y-4">
         <TabsList className="grid grid-cols-2 w-full">
           <TabsTrigger value="users">User Management</TabsTrigger>
           <TabsTrigger value="attendance">Attendance Records</TabsTrigger>
@@ -242,6 +252,16 @@ const AdminDashboard: React.FC = () => {
             <CardHeader className="flex flex-row items-center justify-between">
               <CardTitle className="text-lg">Attendance Records Management</CardTitle>
               <div className="flex gap-2">
+                <Button 
+                  variant="outline" 
+                  onClick={() => {
+                    setRefreshKey(prev => prev + 1);
+                  }} 
+                  disabled={isProcessing}
+                >
+                  {isProcessing ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <RefreshCw className="mr-2 h-4 w-4" />}
+                  Refresh Data
+                </Button>
                 <Button 
                   variant="outline" 
                   onClick={handleReprocessData} 
