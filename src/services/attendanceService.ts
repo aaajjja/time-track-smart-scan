@@ -1,5 +1,5 @@
 
-import { collection, doc, getDoc, setDoc, query, where, getDocs, Timestamp } from "firebase/firestore";
+import { collection, doc, getDoc, setDoc, query, where, getDocs, Timestamp, deleteDoc } from "firebase/firestore";
 import { db } from "./firebase";
 import { User, TimeRecord, AttendanceAction, ScanResult } from "../types";
 import { format } from "date-fns";
@@ -192,5 +192,87 @@ export async function recordAttendance(cardUID: string): Promise<ScanResult> {
       success: false,
       message: "Failed to process scan. Please try again."
     };
+  }
+}
+
+// New functions for attendance record management
+
+export async function getAttendanceRecords(): Promise<TimeRecord[]> {
+  try {
+    // Check if we have recent data in memory (within last 30 seconds)
+    const now = Date.now();
+    if (Object.keys(CACHE.records).length > 0 && now - CACHE.lastFetch < 30000) {
+      return Object.values(CACHE.records);
+    }
+
+    // If no recent data, fetch from Firebase
+    const attendanceRef = collection(db, "attendance");
+    const querySnapshot = await getDocs(attendanceRef);
+    
+    // Clear and rebuild the cache
+    const records: TimeRecord[] = [];
+    Object.keys(CACHE.records).forEach(key => delete CACHE.records[key]);
+    
+    querySnapshot.forEach(doc => {
+      const data = doc.data() as TimeRecord;
+      records.push(data);
+      
+      // Update cache with fresh data
+      CACHE.records[doc.id] = data;
+    });
+    
+    // Update last fetch time
+    CACHE.lastFetch = now;
+    
+    return records;
+  } catch (error) {
+    console.error("Error fetching attendance records:", error);
+    return [];
+  }
+}
+
+export async function clearAttendanceRecords(): Promise<void> {
+  try {
+    // Get all attendance records from Firebase
+    const attendanceRef = collection(db, "attendance");
+    const querySnapshot = await getDocs(attendanceRef);
+    
+    // Delete each record
+    const deletePromises: Promise<void>[] = [];
+    querySnapshot.forEach(docSnapshot => {
+      deletePromises.push(deleteDoc(doc(db, "attendance", docSnapshot.id)));
+    });
+    
+    // Wait for all deletions to complete
+    await Promise.all(deletePromises);
+    
+    // Clear the cache
+    Object.keys(CACHE.records).forEach(key => delete CACHE.records[key]);
+    
+    console.log("All attendance records cleared successfully");
+  } catch (error) {
+    console.error("Error clearing attendance records:", error);
+    throw error;
+  }
+}
+
+export async function reprocessAttendanceData(): Promise<{ processedCount: number }> {
+  try {
+    // This is a simulation of reprocessing attendance data
+    // In a real system, this would involve analyzing raw scan data and regenerating attendance records
+    
+    // For simulation purposes, we'll just delay a bit and return success
+    await new Promise(resolve => setTimeout(resolve, 1000));
+    
+    // Count the number of records we would have processed
+    const attendanceRecordsCount = Object.keys(CACHE.records).length;
+    
+    // Refresh our cache by forcing a reload on next getAttendanceRecords call
+    CACHE.lastFetch = 0;
+    
+    return { processedCount: attendanceRecordsCount };
+  } catch (error) {
+    console.error("Error reprocessing attendance data:", error);
+    throw error;
   }
 }
