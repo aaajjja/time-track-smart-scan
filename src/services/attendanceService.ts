@@ -84,7 +84,7 @@ export async function getTodayRecord(userId: string): Promise<TimeRecord | null>
 }
 
 export async function determineAction(userId: string, userName: string): Promise<ScanResult> {
-  console.time('determine-action');
+  // Remove timing for better performance
   const today = format(new Date(), "yyyy-MM-dd");
   const now = new Date();
   const formattedTime = format(now, "hh:mm a");
@@ -103,14 +103,13 @@ export async function determineAction(userId: string, userName: string): Promise
         timeInAM: formattedTime
       };
       
-      // Update Firebase in the background
+      // Update Firebase in the background without waiting
       setDoc(doc(db, "attendance", cacheKey), record)
         .catch(err => console.error("Background Firebase update failed:", err));
       
       // Update cache immediately
       CACHE.records[cacheKey] = record;
       
-      console.timeEnd('determine-action');
       return {
         success: true,
         action: "Time In AM",
@@ -149,12 +148,11 @@ export async function determineAction(userId: string, userName: string): Promise
       // Update cache immediately
       CACHE.records[cacheKey] = record;
       
-      // Update Firebase in the background
+      // Update Firebase in the background without awaiting
       setDoc(doc(db, "attendance", cacheKey), record)
         .catch(err => console.error("Background Firebase update failed:", err));
     }
     
-    console.timeEnd('determine-action');
     return {
       success,
       action,
@@ -165,7 +163,6 @@ export async function determineAction(userId: string, userName: string): Promise
     
   } catch (error) {
     console.error("Error determining action:", error);
-    console.timeEnd('determine-action');
     return {
       success: false,
       message: "System error. Please try again or contact administrator."
@@ -174,13 +171,11 @@ export async function determineAction(userId: string, userName: string): Promise
 }
 
 export async function recordAttendance(cardUID: string): Promise<ScanResult> {
-  console.time('total-attendance-processing');
   try {
     // Direct cache lookup for maximum speed
     const user = CACHE.users[cardUID];
     
     if (!user) {
-      console.timeEnd('total-attendance-processing');
       return {
         success: false,
         message: "Unregistered RFID card. Please contact administrator."
@@ -189,12 +184,10 @@ export async function recordAttendance(cardUID: string): Promise<ScanResult> {
     
     // Determine and execute appropriate action with optimized function
     const result = await determineAction(user.id, user.name);
-    console.timeEnd('total-attendance-processing');
     return result;
     
   } catch (error) {
     console.error("Error recording attendance:", error);
-    console.timeEnd('total-attendance-processing');
     return {
       success: false,
       message: "Failed to process scan. Please try again."
