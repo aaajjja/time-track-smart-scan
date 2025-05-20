@@ -1,6 +1,5 @@
-
 import React from 'react';
-import AdminDashboard from '@/components/AdminDashboard';
+import AdminDashboard from '../components/AdminDashboard';
 import { Toaster } from "@/components/ui/toaster";
 
 const Admin = () => {

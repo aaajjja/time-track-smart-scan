@@ -1,15 +1,25 @@
 import React, { useState, useEffect } from 'react';
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { ArrowLeft, Loader2, UserPlus, RefreshCw, Trash2 } from "lucide-react";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "../components/ui/card";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "../components/ui/tabs";
+import { Button } from "../components/ui/button";
+import { Input } from "../components/ui/input";
+import { Label } from "../components/ui/label";
+import { ArrowLeft, Loader2, RefreshCw, Trash2, UserPlus } from "lucide-react";
 import { Link } from "react-router-dom";
-import { toast } from "@/components/ui/use-toast";
-import { registerNewUser, clearAttendanceRecords, getAttendanceRecords, reprocessAttendanceData } from "@/services/attendanceService";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { TimeRecord } from '@/types';
+import { toast, useToast } from "../components/ui/use-toast";
+import { registerNewUser, clearSimulatedUsers } from "../services/userService";
+import { getAttendanceRecords, clearAttendanceRecords, reprocessAttendanceData } from "../services/attendanceManagementService";
+import { 
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue
+} from "../components/ui/select";
+import { format } from "date-fns";
+import { resetApplicationState, initializeAppData } from "../services/initializationService";
+import { Separator } from "../components/ui/separator";
+import { CACHE } from "../services/cacheUtils";
 import { 
   Table,
   TableBody,
@@ -18,7 +28,10 @@ import {
   TableHead,
   TableHeader,
   TableRow,
-} from "@/components/ui/table";
+} from "../components/ui/table";
+
+// Import types directly from the types folder
+import type { User, TimeRecord } from "../types/index";
 
 const AdminDashboard: React.FC = () => {
   const [isLoading, setIsLoading] = useState(false);
@@ -30,8 +43,21 @@ const AdminDashboard: React.FC = () => {
     cardUID: '',
     department: '',
   });
+  const [isResetting, setIsResetting] = useState(false);
+  const [registeredUsers, setRegisteredUsers] = useState<User[]>([]);
+
+  const DEMO_CARD_UIDS = ["12345678", "87654321", "11223344"];
 
   useEffect(() => {
+    // Load all users from Firebase and update cache/UI on mount
+    const loadUsers = async () => {
+      await initializeAppData();
+      // Remove demo users from cache
+      DEMO_CARD_UIDS.forEach(uid => { delete CACHE.users[uid]; });
+      const users = Object.values(CACHE.users).filter(user => !DEMO_CARD_UIDS.includes(user.cardUID));
+      setRegisteredUsers(users);
+    };
+    loadUsers();
     // Load attendance records when component mounts or refreshKey changes
     loadAttendanceRecords();
   }, [refreshKey]);
@@ -69,51 +95,59 @@ const AdminDashboard: React.FC = () => {
     }
     
     setIsLoading(true);
-    
-    try {
-      // Call the registration service with timeout
-      const registrationPromise = registerNewUser(newUser);
-      
-      // Add a timeout to ensure we don't hang forever
-      const timeoutPromise = new Promise((_, reject) => 
-        setTimeout(() => reject(new Error("Registration timed out")), 5000)
-      );
-      
-      // Race between the registration and the timeout
-      const result = await Promise.race([
-        registrationPromise,
-        timeoutPromise
-      ]) as { success: boolean; message: string };
-      
-      if (result.success) {
+    const optimisticId = `user${Date.now()}${Math.floor(Math.random() * 1000)}`;
+    const optimisticUser: User = {
+      id: optimisticId,
+      name: newUser.name,
+      cardUID: newUser.cardUID,
+      department: newUser.department
+    };
+    // Optimistically add to UI and cache
+    setRegisteredUsers(prev => [...prev, optimisticUser]);
+    CACHE.users[newUser.cardUID] = optimisticUser;
+    // Reset the form
+    setNewUser({ name: '', cardUID: '', department: '' });
+    toast({
+      title: "Registering User...",
+      description: `User ${optimisticUser.name} is being registered.`,
+    });
+    // Perform Firebase write in background
+    registerNewUser(optimisticUser)
+      .then(async result => {
+        if (result.success) {
+          toast({
+            title: "User Registered",
+            description: `User ${optimisticUser.name} with Card UID ${optimisticUser.cardUID} added successfully!`,
+          });
+          // Refresh users from Firebase to ensure cache/UI are in sync
+          await initializeAppData();
+          // Remove demo users from cache after refresh
+          DEMO_CARD_UIDS.forEach(uid => { delete CACHE.users[uid]; });
+          const users = Object.values(CACHE.users).filter(user => !DEMO_CARD_UIDS.includes(user.cardUID));
+          setRegisteredUsers(users);
+        } else {
+          // Remove from UI and cache if failed
+          setRegisteredUsers(prev => prev.filter(u => u.cardUID !== optimisticUser.cardUID));
+          delete CACHE.users[optimisticUser.cardUID];
+          toast({
+            title: "Registration Failed",
+            description: result.message || "Failed to register user. Please try again.",
+            variant: "destructive",
+          });
+        }
+      })
+      .catch(error => {
+        setRegisteredUsers(prev => prev.filter(u => u.cardUID !== optimisticUser.cardUID));
+        delete CACHE.users[optimisticUser.cardUID];
         toast({
-          title: "User Registered",
-          description: `User ${newUser.name} with Card UID ${newUser.cardUID} added successfully!`,
-        });
-        
-        // Reset the form
-        setNewUser({
-          name: '',
-          cardUID: '',
-          department: '',
-        });
-      } else {
-        toast({
-          title: "Registration Failed",
-          description: result.message || "Failed to register user. Please try again.",
+          title: "Registration Error",
+          description: error?.message || "An unexpected error occurred. Please try again.",
           variant: "destructive",
         });
-      }
-    } catch (error) {
-      console.error("Error registering user:", error);
-      toast({
-        title: "Registration Error",
-        description: "An unexpected error occurred. Please try again.",
-        variant: "destructive",
+      })
+      .finally(() => {
+        setIsLoading(false);
       });
-    } finally {
-      setIsLoading(false);
-    }
   };
 
   const handleClearRecords = async () => {
@@ -171,6 +205,59 @@ const AdminDashboard: React.FC = () => {
     
     return () => clearInterval(interval);
   }, []);
+
+  const handleResetSystem = async () => {
+    if (window.confirm("Are you sure you want to reset the entire system? This will delete all users and attendance records.")) {
+      setIsResetting(true);
+      
+      try {
+        await resetApplicationState();
+        
+        // Clear both records and users from the state
+        setAttendanceRecords([]);
+        setRegisteredUsers([]);
+        
+        toast({
+          title: "System Reset Complete",
+          description: "All users and attendance records have been deleted.",
+        });
+      } catch (error) {
+        console.error("Error resetting system:", error);
+        toast({
+          title: "Reset Failed",
+          description: "There was an error resetting the system.",
+          variant: "destructive",
+        });
+      } finally {
+        setIsResetting(false);
+      }
+    }
+  };
+  
+  const handleClearSimulatedUsers = () => {
+    if (window.confirm("This will remove all built-in demo users. Are you sure?")) {
+      clearSimulatedUsers();
+      
+      // Update the user list to only show non-simulated users
+      // First, filter out any users that might be left in the cache as these would be real users (not simulated)
+      const realUsersInCache = Object.values(CACHE.users);
+      
+      // Since we only want to show newly registered users, not any pre-existing ones,
+      // we'll clear the registeredUsers list completely
+      setRegisteredUsers([]);
+      
+      toast({
+        title: "Demo Users Cleared",
+        description: "All simulated users have been removed.",
+      });
+    }
+  };
+
+  // Instead, only load registered users if explicitly requested
+  const loadRegisteredUsers = () => {
+    const users = Object.values(CACHE.users);
+    setRegisteredUsers(users);
+  };
 
   return (
     <div className="container mx-auto p-4 max-w-6xl">
@@ -243,6 +330,65 @@ const AdminDashboard: React.FC = () => {
                   Register New User
                 </Button>
               </form>
+            </CardContent>
+          </Card>
+          <Card className="mt-4">
+            <CardHeader>
+              <CardTitle>Registered Users</CardTitle>
+              <CardDescription>Users currently registered in the system</CardDescription>
+            </CardHeader>
+            <CardContent>
+              {registeredUsers.length === 0 ? (
+                <p className="text-muted-foreground">No users registered yet</p>
+              ) : (
+                <div className="space-y-4">
+                  <div className="grid grid-cols-3 font-semibold">
+                    <div>Name</div>
+                    <div>Card UID</div>
+                    <div>Department</div>
+                  </div>
+                  <Separator />
+                  {registeredUsers.map(user => (
+                    <div key={user.cardUID} className="grid grid-cols-3">
+                      <div>{user.name}</div>
+                      <div>{user.cardUID}</div>
+                      <div>{user.department || "-"}</div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+          <Card className="mt-4">
+            <CardHeader>
+              <CardTitle>System Management</CardTitle>
+              <CardDescription>Advanced options for system management</CardDescription>
+            </CardHeader>
+            <CardContent className="flex gap-4">
+              <Button 
+                variant="outline" 
+                onClick={handleClearSimulatedUsers}
+              >
+                <Trash2 className="h-4 w-4 mr-2" />
+                Clear Demo Users
+              </Button>
+              <Button 
+                variant="destructive" 
+                onClick={handleResetSystem}
+                disabled={isResetting}
+              >
+                {isResetting ? (
+                  <>
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    Resetting...
+                  </>
+                ) : (
+                  <>
+                    <RefreshCw className="h-4 w-4 mr-2" />
+                    Reset System
+                  </>
+                )}
+              </Button>
             </CardContent>
           </Card>
         </TabsContent>

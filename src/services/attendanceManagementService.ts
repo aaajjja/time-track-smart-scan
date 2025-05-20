@@ -1,7 +1,7 @@
 import { format } from "date-fns";
 import { collection, getDocs, doc, setDoc, deleteDoc } from "firebase/firestore";
 import { db } from "./firebase";
-import { TimeRecord } from "../types";
+import { TimeRecord } from "../types/index";
 import { CACHE } from "./cacheUtils";
 
 export async function getAttendanceRecords(): Promise<TimeRecord[]> {

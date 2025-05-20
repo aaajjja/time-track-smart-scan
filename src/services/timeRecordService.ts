@@ -1,8 +1,7 @@
-
 import { format } from "date-fns";
 import { doc, setDoc, collection, getDocs, deleteDoc } from "firebase/firestore";
 import { db } from "./firebase";
-import { TimeRecord, AttendanceAction, ScanResult } from "../types";
+import { TimeRecord, AttendanceAction, ScanResult } from "../types/index";
 import { CACHE } from "./cacheUtils";
 
 export async function getTodayRecord(userId: string): Promise<TimeRecord | null> {

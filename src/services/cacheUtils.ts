@@ -1,5 +1,4 @@
-
-import { User, TimeRecord } from "../types";
+import { User, TimeRecord } from "../types/index";
 
 // Enhanced in-memory caching system
 export const CACHE = {
