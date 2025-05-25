@@ -1,4 +1,6 @@
 import React, { useState, useEffect } from 'react';
+import { collection, onSnapshot, Timestamp, getDocs, query, where } from "firebase/firestore"; // Add these imports
+import { db } from "../services/firebase"; // Make sure this path is correct
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "../components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "../components/ui/tabs";
 import { Button } from "../components/ui/button";
@@ -33,6 +35,7 @@ import {
 // Import types directly from the types folder
 import type { User, TimeRecord } from "../types/index";
 
+
 const AdminDashboard: React.FC = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
@@ -63,92 +66,146 @@ const AdminDashboard: React.FC = () => {
   }, [refreshKey]);
 
   const loadAttendanceRecords = async () => {
-    try {
-      console.log("Starting to load attendance records");
-      setIsProcessing(true);
-      const records = await getAttendanceRecords();
-      console.log("Received attendance records:", records);
-      setAttendanceRecords(records);
-      setIsProcessing(false);
-    } catch (error) {
-      console.error("Error loading attendance records:", error);
-      toast({
-        title: "Error",
-        description: "Failed to load attendance records",
-        variant: "destructive",
-      });
-      setIsProcessing(false);
-    }
-  };
+  try {
+    setIsProcessing(true);
+    const snapshot = await getDocs(collection(db, "attendance"));
+    
+    const records = snapshot.docs.map(doc => {
+      const data = doc.data();
+      
+      // Helper function to safely parse dates
+      const safeFormatDate = (dateValue: any): string => {
+        try {
+          // Handle Firestore Timestamp
+          if (dateValue?.toDate) {
+            return format(dateValue.toDate(), 'yyyy-MM-dd');
+          }
+          // Handle string date
+          if (typeof dateValue === 'string') {
+            const parsedDate = new Date(dateValue);
+            if (!isNaN(parsedDate.getTime())) {
+              return format(parsedDate, 'yyyy-MM-dd');
+            }
+          }
+          // Handle invalid dates
+          return 'Invalid Date';
+        } catch {
+          return 'Invalid Date';
+        }
+      };
+      
+      // Helper function to safely format times
+      const safeFormatTime = (timeValue: any): string => {
+        try {
+          if (!timeValue) return '-';
+          
+          // Handle Firestore Timestamp
+          if (timeValue?.toDate) {
+            return format(timeValue.toDate(), 'hh:mm a');
+          }
+          // Handle string time
+          if (typeof timeValue === 'string') {
+            // If already in correct format, return as-is
+            if (/^\d{1,2}:\d{2} [AP]M$/.test(timeValue)) {
+              return timeValue;
+            }
+            // Try to parse other string formats
+            const parsedDate = new Date(timeValue);
+            if (!isNaN(parsedDate.getTime())) {
+              return format(parsedDate, 'hh:mm a');
+            }
+          }
+          return '-';
+        } catch {
+          return '-';
+        }
+      };
+
+      return {
+        id: doc.id,
+        userId: data.userId || '',
+        userName: data.userName || '',
+        date: safeFormatDate(data.date),
+        timeInAM: safeFormatTime(data.timeInAM),
+        timeOutAM: safeFormatTime(data.timeOutAM),
+        timeInPM: safeFormatTime(data.timeInPM),
+        timeOutPM: safeFormatTime(data.timeOutPM),
+      };
+    });
+    
+    setAttendanceRecords(records);
+  } catch (error) {
+    console.error("Error loading attendance records:", error);
+    toast({
+      title: "Error",
+      description: "Failed to load attendance records",
+      variant: "destructive",
+    });
+  } finally {
+    setIsProcessing(false);
+  }
+};
 
   const handleAddUser = async (e: React.FormEvent) => {
-    e.preventDefault();
-    
-    // Validate form
-    if (!newUser.name.trim() || !newUser.cardUID.trim()) {
-      toast({
-        title: "Registration Error",
-        description: "Name and Card UID are required fields.",
-        variant: "destructive",
-      });
-      return;
-    }
-    
-    setIsLoading(true);
-    const optimisticId = `user${Date.now()}${Math.floor(Math.random() * 1000)}`;
-    const optimisticUser: User = {
-      id: optimisticId,
-      name: newUser.name,
-      cardUID: newUser.cardUID,
-      department: newUser.department
-    };
-    // Optimistically add to UI and cache
-    setRegisteredUsers(prev => [...prev, optimisticUser]);
-    CACHE.users[newUser.cardUID] = optimisticUser;
-    // Reset the form
-    setNewUser({ name: '', cardUID: '', department: '' });
+  e.preventDefault();
+
+  if (!newUser.name.trim() || !newUser.cardUID.trim()) {
     toast({
-      title: "Registering User...",
-      description: `User ${optimisticUser.name} is being registered.`,
+      title: "Registration Error",
+      description: "Name and Card UID are required fields.",
+      variant: "destructive",
     });
-    // Perform Firebase write in background
-    registerNewUser(optimisticUser)
-      .then(async result => {
-        if (result.success) {
-          toast({
-            title: "User Registered",
-            description: `User ${optimisticUser.name} with Card UID ${optimisticUser.cardUID} added successfully!`,
-          });
-          // Refresh users from Firebase to ensure cache/UI are in sync
-          await initializeAppData();
-          // Remove demo users from cache after refresh
-          DEMO_CARD_UIDS.forEach(uid => { delete CACHE.users[uid]; });
-          const users = Object.values(CACHE.users).filter(user => !DEMO_CARD_UIDS.includes(user.cardUID));
-          setRegisteredUsers(users);
-        } else {
-          // Remove from UI and cache if failed
-          setRegisteredUsers(prev => prev.filter(u => u.cardUID !== optimisticUser.cardUID));
-          delete CACHE.users[optimisticUser.cardUID];
-          toast({
-            title: "Registration Failed",
-            description: result.message || "Failed to register user. Please try again.",
-            variant: "destructive",
-          });
-        }
-      })
-      .catch(error => {
-        setRegisteredUsers(prev => prev.filter(u => u.cardUID !== optimisticUser.cardUID));
-        delete CACHE.users[optimisticUser.cardUID];
+    return;
+  }
+
+  setIsLoading(true);
+  const optimisticId = `user${Date.now()}${Math.floor(Math.random() * 1000)}`;
+  const optimisticUser: User = {
+    id: optimisticId,
+    name: newUser.name,
+    cardUID: newUser.cardUID,
+    department: newUser.department
+  };
+
+  setNewUser({ name: '', cardUID: '', department: '' });
+
+  toast({
+    title: "Registering User...",
+    description: `User ${optimisticUser.name} is being registered.`,
+  });
+
+  registerNewUser(optimisticUser)
+    .then(async result => {
+      if (result.success) {
+        // ✅ Only now update the cache and UI
+        CACHE.users[newUser.cardUID] = optimisticUser;
+        await initializeAppData();
+        DEMO_CARD_UIDS.forEach(uid => { delete CACHE.users[uid]; });
+        const users = Object.values(CACHE.users).filter(user => !DEMO_CARD_UIDS.includes(user.cardUID));
+        setRegisteredUsers(users);
         toast({
-          title: "Registration Error",
-          description: error?.message || "An unexpected error occurred. Please try again.",
+          title: "User Registered",
+          description: `User ${optimisticUser.name} with Card UID ${optimisticUser.cardUID} added successfully!`,
+        });
+      } else {
+        toast({
+          title: "Registration Failed",
+          description: result.message || "Failed to register user. Please try again.",
           variant: "destructive",
         });
-      })
-      .finally(() => {
-        setIsLoading(false);
+      }
+    })
+    .catch(error => {
+      toast({
+        title: "Registration Error",
+        description: error?.message || "An unexpected error occurred. Please try again.",
+        variant: "destructive",
       });
-  };
+    })
+    .finally(() => {
+      setIsLoading(false);
+    });
+};
 
   const handleClearRecords = async () => {
     setIsProcessing(true);
@@ -198,14 +255,58 @@ const AdminDashboard: React.FC = () => {
   };
 
   // Auto-reload records every minute to keep the dashboard updated
-  useEffect(() => {
-    const interval = setInterval(() => {
-      loadAttendanceRecords();
-    }, 60000); // Reload every minute
-    
-    return () => clearInterval(interval);
-  }, []);
+// Add this helper function to convert Firestore data
+const convertFirestoreRecord = (doc: any): TimeRecord => {
+  const data = doc.data();
+  
+  // Helper to convert Timestamp to display string
+  const convertTime = (time: any): string | undefined => {
+    if (!time) return undefined;
+    if (time instanceof Timestamp) {
+      return format(time.toDate(), 'hh:mm a');
+    }
+    // If it's already a string, return as-is
+    if (typeof time === 'string') return time;
+    return undefined;
+  };
 
+  return {
+    userId: data.userId,
+    userName: data.userName,
+    date: data.date instanceof Timestamp 
+      ? format(data.date.toDate(), 'yyyy-MM-dd') 
+      : data.date,
+    timeInAM: convertTime(data.timeInAM),
+    timeOutAM: convertTime(data.timeOutAM),
+    timeInPM: convertTime(data.timeInPM),
+    timeOutPM: convertTime(data.timeOutPM),
+  };
+};
+
+// Update your useEffect for data fetching
+// Replace your current useEffect for loading users with this:
+useEffect(() => {
+  // Query to exclude demo users
+  const usersQuery = query(
+    collection(db, "users"),
+    where("cardUID", "not-in", DEMO_CARD_UIDS)
+  );
+
+  const unsubscribe = onSnapshot(usersQuery, (snapshot) => {
+    const users = snapshot.docs.map(doc => ({
+      id: doc.id,
+      ...doc.data()
+    })) as User[];
+    
+    // Update both state and cache
+    setRegisteredUsers(users);
+    users.forEach(user => {
+      CACHE.users[user.cardUID] = user;
+    });
+  });
+
+  return () => unsubscribe();
+}, []);
   const handleResetSystem = async () => {
     if (window.confirm("Are you sure you want to reset the entire system? This will delete all users and attendance records.")) {
       setIsResetting(true);
@@ -448,18 +549,18 @@ const AdminDashboard: React.FC = () => {
                         <TableHead>Time Out PM</TableHead>
                       </TableRow>
                     </TableHeader>
-                    <TableBody>
-                      {attendanceRecords.map((record, index) => (
-                        <TableRow key={index}>
-                          <TableCell className="font-medium">{record.userName}</TableCell>
-                          <TableCell>{record.date}</TableCell>
-                          <TableCell>{record.timeInAM || '-'}</TableCell>
-                          <TableCell>{record.timeOutAM || '-'}</TableCell>
-                          <TableCell>{record.timeInPM || '-'}</TableCell>
-                          <TableCell>{record.timeOutPM || '-'}</TableCell>
-                        </TableRow>
-                      ))}
-                    </TableBody>
+                <TableBody>
+  {attendanceRecords.map((record) => (
+    <TableRow key={`${record.userId}-${record.date}`}>
+      <TableCell>{record.userName}</TableCell>
+      <TableCell>{record.date}</TableCell>
+      <TableCell>{record.timeInAM || '-'}</TableCell>
+      <TableCell>{record.timeOutAM || '-'}</TableCell>
+      <TableCell>{record.timeInPM || '-'}</TableCell>
+      <TableCell>{record.timeOutPM || '-'}</TableCell>
+    </TableRow>
+  ))}
+</TableBody>
                   </Table>
                 </div>
               )}
