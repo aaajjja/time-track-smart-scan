@@ -9,8 +9,8 @@ import { Label } from "../components/ui/label";
 import { ArrowLeft, Loader2, RefreshCw, Trash2, UserPlus } from "lucide-react";
 import { Link } from "react-router-dom";
 import { toast, useToast } from "../components/ui/use-toast";
-import { registerNewUser, clearSimulatedUsers } from "../services/userService";
-import { getAttendanceRecords, clearAttendanceRecords, reprocessAttendanceData } from "../services/attendanceManagementService";
+import { registerNewUser } from "../services/userService";
+import { getAttendanceRecords, clearAttendanceRecords } from "../services/attendanceManagementService";
 import { 
   Select,
   SelectContent,
@@ -228,28 +228,6 @@ const AdminDashboard: React.FC = () => {
     }
   };
 
-  const handleReprocessData = async () => {
-    setIsProcessing(true);
-    try {
-      const result = await reprocessAttendanceData();
-      toast({
-        title: "Data Reprocessed",
-        description: `Successfully reprocessed ${result.processedCount} attendance records.`,
-      });
-      // Refresh records after reprocessing
-      setRefreshKey(prev => prev + 1);
-    } catch (error) {
-      console.error("Error reprocessing attendance data:", error);
-      toast({
-        title: "Processing Error",
-        description: "Failed to reprocess attendance data",
-        variant: "destructive",
-      });
-    } finally {
-      setIsProcessing(false);
-    }
-  };
-
   const handleDepartmentChange = (value: string) => {
     setNewUser({...newUser, department: value});
   };
@@ -332,25 +310,6 @@ useEffect(() => {
       } finally {
         setIsResetting(false);
       }
-    }
-  };
-  
-  const handleClearSimulatedUsers = () => {
-    if (window.confirm("This will remove all built-in demo users. Are you sure?")) {
-      clearSimulatedUsers();
-      
-      // Update the user list to only show non-simulated users
-      // First, filter out any users that might be left in the cache as these would be real users (not simulated)
-      const realUsersInCache = Object.values(CACHE.users);
-      
-      // Since we only want to show newly registered users, not any pre-existing ones,
-      // we'll clear the registeredUsers list completely
-      setRegisteredUsers([]);
-      
-      toast({
-        title: "Demo Users Cleared",
-        description: "All simulated users have been removed.",
-      });
     }
   };
 
@@ -467,13 +426,6 @@ useEffect(() => {
             </CardHeader>
             <CardContent className="flex gap-4">
               <Button 
-                variant="outline" 
-                onClick={handleClearSimulatedUsers}
-              >
-                <Trash2 className="h-4 w-4 mr-2" />
-                Clear Demo Users
-              </Button>
-              <Button 
                 variant="destructive" 
                 onClick={handleResetSystem}
                 disabled={isResetting}
@@ -508,14 +460,6 @@ useEffect(() => {
                 >
                   {isProcessing ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <RefreshCw className="mr-2 h-4 w-4" />}
                   Refresh Data
-                </Button>
-                <Button 
-                  variant="outline" 
-                  onClick={handleReprocessData} 
-                  disabled={isProcessing}
-                >
-                  {isProcessing ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <RefreshCw className="mr-2 h-4 w-4" />}
-                  Reprocess Data
                 </Button>
                 <Button 
                   variant="destructive" 
