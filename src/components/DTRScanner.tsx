@@ -89,8 +89,35 @@ const DTRScanner: React.FC = () => {
             {/* Main Content Grid */}
             <div className="grid lg:grid-cols-3 gap-8">
               {/* RFID Input Section - Takes 2 columns on large screens */}
-              <div className="lg:col-span-2">
+              <div className="lg:col-span-2 space-y-6">
                 <RFIDInput onScan={handleScan} isProcessing={isProcessing} />
+                
+                {/* Quick Info Cards - Placed directly below RFID scanner */}
+                <div className="grid md:grid-cols-3 gap-4">
+                  <Card className="border-0 shadow-lg bg-blue-600 text-white">
+                    <CardContent className="p-4 text-center">
+                      <div className="text-lg font-bold mb-1">Time In</div>
+                      <div className="text-blue-100 text-sm">Morning: 8:00 AM</div>
+                      <div className="text-blue-100 text-sm">Afternoon: 1:00 PM</div>
+                    </CardContent>
+                  </Card>
+                  
+                  <Card className="border-0 shadow-lg bg-emerald-600 text-white">
+                    <CardContent className="p-4 text-center">
+                      <div className="text-lg font-bold mb-1">Time Out</div>
+                      <div className="text-emerald-100 text-sm">Morning: 12:00 PM</div>
+                      <div className="text-emerald-100 text-sm">Afternoon: 5:00 PM</div>
+                    </CardContent>
+                  </Card>
+                  
+                  <Card className="border-0 shadow-lg bg-slate-600 text-white">
+                    <CardContent className="p-4 text-center">
+                      <div className="text-lg font-bold mb-1">Support</div>
+                      <div className="text-slate-100 text-sm">Need help?</div>
+                      <div className="text-slate-100 text-sm">Contact IT Support</div>
+                    </CardContent>
+                  </Card>
+                </div>
               </div>
               
               {/* Instructions Section */}
@@ -100,33 +127,6 @@ const DTRScanner: React.FC = () => {
             </div>
           </CardContent>
         </Card>
-
-        {/* Quick Info Cards - Moved below the main scanner */}
-        <div className="grid md:grid-cols-3 gap-6">
-          <Card className="border-0 shadow-lg bg-blue-600 text-white">
-            <CardContent className="p-6 text-center">
-              <div className="text-2xl font-bold mb-2">Time In</div>
-              <div className="text-blue-100">Morning: 8:00 AM</div>
-              <div className="text-blue-100">Afternoon: 1:00 PM</div>
-            </CardContent>
-          </Card>
-          
-          <Card className="border-0 shadow-lg bg-emerald-600 text-white">
-            <CardContent className="p-6 text-center">
-              <div className="text-2xl font-bold mb-2">Time Out</div>
-              <div className="text-emerald-100">Morning: 12:00 PM</div>
-              <div className="text-emerald-100">Afternoon: 5:00 PM</div>
-            </CardContent>
-          </Card>
-          
-          <Card className="border-0 shadow-lg bg-slate-600 text-white">
-            <CardContent className="p-6 text-center">
-              <div className="text-2xl font-bold mb-2">Support</div>
-              <div className="text-slate-100">Need help?</div>
-              <div className="text-slate-100">Contact IT Support</div>
-            </CardContent>
-          </Card>
-        </div>
       </div>
     </div>
   );
