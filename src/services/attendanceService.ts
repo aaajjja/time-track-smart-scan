@@ -1,8 +1,8 @@
 
 import { getUserByCardUID } from './userService';
-import { ScanResult, AttendanceRecord, User } from '../types/index';
-import { recordTimeEntry, getCurrentTimeRecord } from './timeRecordService';
-import { getAllAttendanceRecords } from './attendanceManagementService';
+import { ScanResult, User } from '../types/index';
+import { determineAction } from './timeRecordService';
+import { getAttendanceRecords } from './attendanceManagementService';
 
 // Main attendance recording function
 export async function recordAttendance(cardUID: string): Promise<ScanResult> {
@@ -19,8 +19,8 @@ export async function recordAttendance(cardUID: string): Promise<ScanResult> {
       };
     }
     
-    // Record the time entry
-    const result = await recordTimeEntry(user);
+    // Record the time entry using determineAction
+    const result = await determineAction(user.id, user.name);
     return result;
     
   } catch (error) {
@@ -33,4 +33,4 @@ export async function recordAttendance(cardUID: string): Promise<ScanResult> {
 }
 
 // Export attendance management functions
-export { getAllAttendanceRecords, getCurrentTimeRecord };
+export { getAttendanceRecords };

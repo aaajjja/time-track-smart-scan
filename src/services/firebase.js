@@ -1,18 +1,11 @@
+
 // Import the functions you need from the SDKs you need
 import { initializeApp } from "firebase/app";
 import { getAnalytics } from "firebase/analytics";
-// TODO: Add SDKs for Firebase products that you want to use
-// https://firebase.google.com/docs/web/setup#available-libraries
+import { getFirestore, collection, getDocs } from "firebase/firestore";
 
 // Your web app's Firebase configuration
 // For Firebase JS SDK v7.20.0 and later, measurementId is optional
-const fetchData = async () => {
-  const querySnapshot = await getDocs(collection(db, "users"));
-  querySnapshot.forEach((doc) => {
-    console.log(doc.id, "=>", doc.data());
-  });
-};
-
 const firebaseConfig = {
   apiKey: "AIzaSyCpdlnBWRFvBWiz1Zdj20E9a_tcQir1OEg",
   authDomain: "dtr-test-6abcb.firebaseapp.com",
@@ -26,3 +19,17 @@ const firebaseConfig = {
 // Initialize Firebase
 const app = initializeApp(firebaseConfig);
 const analytics = getAnalytics(app);
+
+// Initialize Cloud Firestore and get a reference to the service
+const db = getFirestore(app);
+
+// Example function to fetch data
+const fetchData = async () => {
+  const querySnapshot = await getDocs(collection(db, "users"));
+  querySnapshot.forEach((doc) => {
+    console.log(doc.id, "=>", doc.data());
+  });
+};
+
+// Export the database instance
+export { db };

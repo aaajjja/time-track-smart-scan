@@ -12,6 +12,16 @@ export async function getTodayRecord(userId: string): Promise<TimeRecord | null>
   return CACHE.records[cacheKey] || null;
 }
 
+// Export this function that was missing
+export async function getCurrentTimeRecord(userId: string): Promise<TimeRecord | null> {
+  return getTodayRecord(userId);
+}
+
+// Export this function that was missing  
+export async function recordTimeEntry(user: { id: string; name: string }): Promise<ScanResult> {
+  return determineAction(user.id, user.name);
+}
+
 export async function determineAction(userId: string, userName: string): Promise<ScanResult> {
   const today = format(new Date(), "yyyy-MM-dd");
   const now = new Date();

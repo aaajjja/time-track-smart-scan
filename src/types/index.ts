@@ -17,6 +17,11 @@ export interface TimeRecord {
   timeOutPM?: string;
 }
 
+// Add the missing AttendanceRecord type
+export interface AttendanceRecord extends TimeRecord {
+  // This can be the same as TimeRecord for now
+}
+
 export type AttendanceAction = 'Time In AM' | 'Time Out AM' | 'Time In PM' | 'Time Out PM' | 'Complete' | 'Time In AM (Updated)';
 
 export interface ScanResult {
