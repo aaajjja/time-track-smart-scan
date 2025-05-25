@@ -5,7 +5,7 @@ import AdminLink from '@/components/AdminLink';
 
 const Index = () => {
   return (
-    <div className="min-h-screen bg-accent/50 py-8">
+    <div className="relative">
       <AdminLink />
       <DTRScanner />
     </div>

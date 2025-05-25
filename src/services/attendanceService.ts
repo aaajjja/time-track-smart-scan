@@ -1,40 +1,36 @@
 
-import { User, ScanResult } from "../types";
-import { getUserByCardUID, registerNewUser } from "./userService";
-import { determineAction } from "./timeRecordService";
-import { getAttendanceRecords, clearAttendanceRecords, reprocessAttendanceData } from "./attendanceManagementService";
+import { getUserByCardUID } from './userService';
+import { ScanResult, AttendanceRecord, User } from '../types/index';
+import { recordTimeEntry, getCurrentTimeRecord } from './timeRecordService';
+import { getAllAttendanceRecords } from './attendanceManagementService';
 
+// Main attendance recording function
 export async function recordAttendance(cardUID: string): Promise<ScanResult> {
+  console.log("Recording attendance for card:", cardUID);
+  
   try {
-    // Get user by card UID
-    const user = await getUserByCardUID(cardUID);
+    // Get user information
+    const user: User | null = await getUserByCardUID(cardUID);
     
     if (!user) {
       return {
         success: false,
-        message: "Unregistered RFID card. Please contact administrator."
+        message: "RFID card not registered. Please contact the administrator to register your card."
       };
     }
     
-    // Determine and execute appropriate action
-    const result = await determineAction(user.id, user.name);
+    // Record the time entry
+    const result = await recordTimeEntry(user);
     return result;
     
   } catch (error) {
-    console.error("Error recording attendance:", error);
+    console.error("Error in recordAttendance:", error);
     return {
       success: false,
-      message: "Failed to process scan. Please try again."
+      message: "System error occurred. Please try again or contact support."
     };
   }
 }
 
-// Re-export functions from the other services
-export {
-  getUserByCardUID,
-  registerNewUser,
-  determineAction,
-  getAttendanceRecords,
-  clearAttendanceRecords,
-  reprocessAttendanceData
-};
+// Export attendance management functions
+export { getAllAttendanceRecords, getCurrentTimeRecord };
