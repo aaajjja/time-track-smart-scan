@@ -101,8 +101,8 @@ const DTRScanner: React.FC = () => {
           </CardContent>
         </Card>
 
-        {/* Quick Info Cards */}
-        <div className="grid md:grid-cols-3 gap-6 mt-8">
+        {/* Quick Info Cards - Moved below the main scanner */}
+        <div className="grid md:grid-cols-3 gap-6">
           <Card className="border-0 shadow-lg bg-blue-600 text-white">
             <CardContent className="p-6 text-center">
               <div className="text-2xl font-bold mb-2">Time In</div>
